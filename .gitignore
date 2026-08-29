@@ -1,0 +1,14 @@
+# Datos (descargar desde Kaggle)
+data/*.csv
+data/*.zip
+data/*.parquet
+
+# Artefactos
+__pycache__/
+.ipynb_checkpoints/
+.DS_Store
+
+# Pendientes de subir
+informe/
+README.md
+src/run_eda.py
