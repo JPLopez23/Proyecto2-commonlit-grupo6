@@ -117,7 +117,15 @@ def build_feature_frame(summaries: pd.DataFrame,
     ov_rows = df.apply(
         lambda r: overlap_features(r[text_col], r.get(prompt_text_col, "")), axis=1
     ).apply(pd.Series)
-    return pd.concat([df, feat_rows, ov_rows], axis=1)
+    out = pd.concat([df, feat_rows, ov_rows], axis=1)
+
+    out["prompt_word_count"] = out[prompt_text_col].fillna("").map(
+        lambda t: len(tokenize_words(t))
+    )
+    out["summary_source_word_ratio"] = (
+        out["word_count"] / out["prompt_word_count"].replace(0, np.nan)
+    )
+    return out
 
 
 NUMERIC_FEATURES = [
@@ -127,6 +135,7 @@ NUMERIC_FEATURES = [
     "exclamation_count", "question_count", "comma_count",
     "jaccard_unigram", "prop_words_in_source", "bigram_overlap_ratio",
     "trigram_overlap_ratio", "new_word_ratio",
+    "prompt_word_count", "summary_source_word_ratio",
 ]
 
 TARGETS = ["content", "wording"]
