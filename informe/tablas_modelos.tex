@@ -1,0 +1,20 @@
+\begin{table}[ht]
+\centering\small
+\caption{Resultados fuera de muestra (Leave-One-Prompt-Out). MCRMSE y RMSE: menor es mejor.}
+\label{tab:modelos}
+\resizebox{\textwidth}{!}{\begin{tabular}{lccccc}
+\toprule
+Modelo & \makecell{MCRMSE\\(media por texto)} & \makecell{MCRMSE\\(agrupado)} & \makecell{RMSE\\content} & \makecell{RMSE\\wording} & \makecell{Segundos\\por pliegue} \\
+\midrule
+Ensamble (stacking) & 0{,}518 & 0{,}511 & 0{,}433 & 0{,}588 & <0{,}1 \\
+LightGBM, 33 rasgos & 0{,}524 & 0{,}518 & 0{,}448 & 0{,}587 & 0{,}5 \\
+Ensamble sin DeBERTa (Ridge + LightGBM) & 0{,}545 & 0{,}538 & 0{,}460 & 0{,}616 & <0{,}1 \\
+LightGBM, 18 rasgos & 0{,}546 & 0{,}540 & 0{,}466 & 0{,}615 & 0{,}2 \\
+Ridge, 33 rasgos & 0{,}567 & 0{,}559 & 0{,}466 & 0{,}651 & <0{,}1 \\
+Ridge, 18 rasgos & 0{,}592 & 0{,}585 & 0{,}495 & 0{,}674 & <0{,}1 \\
+DeBERTa-v3 base & 0{,}608 & 0{,}610 & 0{,}484 & 0{,}737 & 495{,}4 \\
+DeBERTa-v3 small & 0{,}617 & 0{,}618 & 0{,}481 & 0{,}754 & 289{,}1 \\
+Línea base (solo longitud) & 0{,}724 & 0{,}712 & 0{,}559 & 0{,}865 & <0{,}1 \\
+\bottomrule
+\end{tabular}}
+\end{table}

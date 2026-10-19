@@ -1,0 +1,15 @@
+\begin{table}[ht]
+\centering\footnotesize
+\caption{Hiperparámetros elegidos en la validación interna, según el texto que se deja fuera.}
+\label{tab:params}
+\resizebox{\textwidth}{!}{\begin{tabular}{lcccc}
+\toprule
+Modelo & On Tragedy & Egyptian Social Structure & The Third Wave & The Jungle \\
+\midrule
+Ridge, 18 rasgos & $\alpha=10$ & $\alpha=100$ & $\alpha=100$ & $\alpha=1$ \\
+Ridge, 33 rasgos & $\alpha=100$ & $\alpha=100$ & $\alpha=100$ & $\alpha=1$ \\
+LightGBM, 18 rasgos & 7 hojas, 250 árb. & 7 hojas, 250 árb. & 7 hojas, 250 árb. & 7 hojas, 250 árb. \\
+LightGBM, 33 rasgos & 15 hojas, 250 árb. & 7 hojas, 500 árb. & 7 hojas, 500 árb. & 7 hojas, 500 árb. \\
+\bottomrule
+\end{tabular}}
+\end{table}
