@@ -1,0 +1,36 @@
+{
+  "config": {
+    "model_name": "microsoft/deberta-v3-small",
+    "tag": "small",
+    "data_dir": "/kaggle/input/competitions/commonlit-evaluate-student-summaries",
+    "out_dir": "/kaggle/working/results",
+    "max_len": 512,
+    "epochs": 3,
+    "batch_size": 8,
+    "lr": 3e-05,
+    "head_lr": 0.001,
+    "weight_decay": 0.01,
+    "warmup_ratio": 0.1,
+    "include_source": false,
+    "seed": 42,
+    "fp16": true,
+    "subsample": 0,
+    "only_folds": "",
+    "skip_final": false
+  },
+  "mcrmse_mean_prompts": 0.6165588614090296,
+  "mcrmse_pooled": 0.6178616321134646,
+  "per_prompt": {
+    "39c16e": 0.5154585872529251,
+    "3b9047": 0.6720261446914468,
+    "814d6b": 0.6350094346570295,
+    "ebad26": 0.6437412790347168
+  },
+  "fold_seconds": {
+    "39c16e": 282.4827027320862,
+    "3b9047": 265.4608590602875,
+    "814d6b": 331.03815484046936,
+    "ebad26": 277.55528593063354
+  },
+  "final_seconds": 382.8454875946045
+}
