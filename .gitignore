@@ -8,7 +8,17 @@ __pycache__/
 .ipynb_checkpoints/
 .DS_Store
 
-# Pendientes de subir
-informe/
-README.md
-src/run_eda.py
+# Modelos pesados de DeBERTa (se comparten por Drive, no por git)
+results/deberta_*_final/
+*.safetensors
+deberta_results.zip
+
+# Auxiliares de LaTeX
+informe/*.aux
+informe/*.log
+informe/*.out
+informe/*.toc
+informe/*.bbl
+informe/*.blg
+informe/*.fls
+informe/*.fdb_latexmk
