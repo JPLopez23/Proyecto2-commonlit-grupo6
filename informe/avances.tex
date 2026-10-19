@@ -1,0 +1,314 @@
+\documentclass[11pt,a4paper]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[spanish,es-tabla]{babel}
+\usepackage{lmodern}
+\usepackage[margin=2.5cm]{geometry}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{setspace}
+\usepackage[hidelinks]{hyperref}
+\usepackage[round,authoryear]{natbib}
+
+\setstretch{1.1}
+\setlength{\parskip}{0.7em}
+\setlength{\parindent}{0pt}
+\setlength{\bibhang}{0pt}
+\setlength{\bibsep}{5pt}
+\renewcommand{\refname}{Referencias}
+\setcitestyle{aysep={,}}
+
+\newcolumntype{P}[1]{>{\raggedright\arraybackslash}p{#1}}
+
+\begin{document}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%% PORTADA %%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\begin{titlepage}
+\centering
+{\large Universidad del Valle de Guatemala\\
+Facultad de Ingeniería\\
+Departamento de Ciencias de la Computación\\
+CC3084 --- Data Science\\
+Semestre II --- 2026\par}
+
+\vspace{1.2cm}
+% \includegraphics[width=4cm]{logo_uvg.png}  % descomentar si sube el logo a Overleaf
+\vspace{1.2cm}
+
+{\LARGE Proyecto 2 --- Avances\par}
+\vspace{0.8cm}
+{\large Reto 12: CommonLit --- Evaluar resúmenes de estudiantes\par}
+\vspace{0.3cm}
+{\normalsize Tema: Procesamiento del Lenguaje Natural\par}
+\vspace{0.3cm}
+{\small \url{https://www.kaggle.com/competitions/commonlit-evaluate-student-summaries/overview}\par}
+
+\vspace{1.5cm}
+{\Large Grupo 6\par}
+\vspace{0.4cm}
+Jose López --- 23773\\
+Hugo Barillas --- 23306\\
+Luis Palacios --- 23933\\
+Roberto Nájera --- 23781
+
+\vfill
+Guatemala, \today
+\end{titlepage}
+
+\tableofcontents
+\newpage
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%% 1. INTRODUCCIÓN %%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Introducción}
+
+El reto CommonLit consiste en predecir dos notas que un experto asigna al resumen escrito por un estudiante. La primera, content, mide la cobertura de las ideas del texto fuente, y la segunda, wording, mide la calidad de la redacción. La métrica oficial es el MCRMSE, que es el promedio de la raíz del error cuadrático medio de las dos notas, y la prueba real usa textos fuente que el modelo no vio durante el entrenamiento.
+
+El análisis exploratorio previo dejó cinco hechos que condicionan la elección de algoritmos. Primero, hay 7165 resúmenes pero solo cuatro textos fuente, por lo que el modelo debe generalizar a textos nuevos. Segundo, la longitud del resumen es la señal más fuerte, con una correlación cercana a 0,86 con content y a 0,61 con wording. Tercero, content y wording tienen una correlación de 0,75, pero miden cosas distintas, por lo que conviene predecirlas juntas sin unirlas. Cuarto, copiar y pegar del texto fuente penaliza wording, mientras que un solapamiento medio ayuda a content. Quinto, existe un sesgo por texto fuente en wording, por lo que la validación debe separar los datos por texto.
+
+El objetivo de este documento es revisar qué algoritmos de aprendizaje automático se han usado en problemas similares, como la evaluación automática de ensayos, de resúmenes y de respuestas cortas, comparar arquitecturas y variantes dentro de las familias más relevantes, y justificar una selección preliminar de modelos para el proyecto.
+
+Se priorizaron artículos de revistas indexadas. Algunos modelos que hoy se usan en la práctica, como BERT, DeBERTa, XGBoost, LightGBM, Sentence-BERT y la red neuronal de Taghipour y Ng, se publicaron originalmente en actas de conferencias y no tienen versión en revista, por lo que se citan como fuente original de esos modelos. DeBERTaV3 se cita como preprint.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%% 2. REVISIÓN %%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Revisión bibliográfica}
+
+\subsection{Panorama general de la evaluación automática de textos}
+
+La evaluación automática de escritura es un área consolidada. \citet{hussein2019} y \citet{ramesh2022} presentan revisiones de la literatura que muestran una evolución clara, desde sistemas basados en rasgos lingüísticos diseñados a mano, hacia modelos estadísticos de aprendizaje automático y, más recientemente, hacia redes neuronales y modelos de lenguaje preentrenados. \citet{uto2021} revisa de forma específica los modelos neuronales y clasifica la tarea de puntuación en cuatro tipos. \citet{williamson2012} propone un marco para decidir si un sistema de puntuación automática es adecuado, que considera el ajuste con el propósito de la evaluación, la concordancia con calificadores humanos, la asociación con medidas independientes, la generalización entre tareas y los efectos sobre subgrupos. Este marco es relevante para el proyecto porque un modelo que solo cuenta palabras acertaría bastante, pero no evaluaría contenido ni redacción, y porque la generalización a textos nuevos es el reto central.
+
+\subsection{Sistemas clásicos basados en rasgos y regresión}
+
+Los sistemas comerciales clásicos combinan rasgos lingüísticos con un modelo lineal. E-rater V.2 \citep{attali2006} usa un conjunto pequeño de rasgos interpretables y un único modelo de puntuación que sirve para todos los textos de una evaluación, lo que lo acerca al problema de generalizar entre textos fuente. Su ventaja es que cada rasgo se puede explicar y traducir en retroalimentación.
+
+Otra línea son las herramientas de análisis lingüístico automático que producen cientos de índices. TAACO calcula índices de cohesión local y global, y se reporta que los índices globales predicen juicios de expertos sobre la coherencia y la calidad de los ensayos \citep{crossley2016}. TAALES calcula índices de sofisticación léxica como frecuencia de palabras, asociación entre n-gramas y distintividad contextual, y sus índices explican una parte importante de la variación en las notas de dominio léxico \citep{kyle2018}. Estas familias coinciden con las del marco teórico del análisis exploratorio, que incluye diversidad léxica, cohesión y solapamiento.
+
+Sobre estos rasgos se han aplicado la regresión regularizada \citep{hoerl1970}, las máquinas de vectores de soporte para regresión \citep{cortes1995,smola2004}, los bosques aleatorios \citep{breiman2001} y el gradient boosting \citep{friedman2001}, con implementaciones modernas como XGBoost \citep{chen2016} y LightGBM \citep{ke2017}. El esquema de ponderación TF-IDF \citep{salton1988} sigue siendo la representación base para texto cuando no se usan embeddings.
+
+\subsection{Semántica latente y evaluación de resúmenes}
+
+Para resúmenes en particular, la línea más influyente es el análisis semántico latente, que representa los textos en un espacio de baja dimensión y permite medir su similitud semántica \citep{landauer1998}. Sobre esta idea se construyó Summary Street, un sistema que compara el resumen del estudiante con el texto original, estima si cubre el contenido importante y le indica qué información de la fuente falta \citep{kintsch2000}. \citet{wade2004} describen su uso con estudiantes de sexto grado para resúmenes de entre 100 y 250 palabras, y \citet{franzke2005} presentan el sistema como apoyo a la comprensión y la escritura. Esto respalda la idea de que la cobertura de contenido, es decir la nota content, se puede aproximar con la similitud semántica entre el resumen y la fuente.
+
+La similitud entre un resumen y su fuente también se puede medir con embeddings de oraciones. Sentence-BERT \citep{reimers2019} usa redes siamesas sobre BERT para producir vectores que se comparan con similitud coseno. Por su parte, fastText \citep{bojanowski2017} representa cada palabra con los n-gramas de sus caracteres y puede generar vectores para palabras que no vio en el entrenamiento, lo que da robustez ante los errores de ortografía frecuentes en textos de estudiantes.
+
+\subsection{Redes neuronales para puntuación de ensayos}
+
+Con el aumento de datos, los modelos neuronales empezaron a sustituir la ingeniería de rasgos. \citet{taghipour2016} entrenan redes recurrentes LSTM \citep{hochreiter1997} que aprenden la relación entre el ensayo y su nota sin rasgos manuales y superan una línea base fuerte en 5,6 por ciento de kappa ponderado cuadrático. \citet{kumar2020} usan perceptrones multicapa para predecir notas holísticas y por rúbrica, y emplean valores SHAP para explicar las predicciones, con lo que responden a la crítica de que las redes son cajas negras. \citet{uto2021} presenta en detalle la arquitectura de los modelos neuronales de puntuación y señala que este enfoque evita la ingeniería de rasgos.
+
+\subsection{Modelos de lenguaje preentrenados}
+
+Los modelos de tipo Transformer representan el estado del arte actual. BERT \citep{devlin2019} introdujo el preentrenamiento bidireccional y el ajuste fino para tareas específicas. \citet{xue2021} ajustan BERT con aprendizaje multitarea y un esquema jerárquico para textos largos, a fin de predecir varias dimensiones de calidad a la vez, y reportan una mejora de 4,5 por ciento en el kappa ponderado cuadrático sobre una línea base fuerte en el conjunto ASAP. \citet{ludwig2021} comparan modelos Transformer con una regresión logística sobre bolsa de palabras para calificar respuestas escritas por correo electrónico y encuentran que los Transformers la superan sin ajuste de hiperparámetros.
+
+DeBERTa \citep{he2021} mejora a BERT mediante una atención desacoplada, que codifica por separado el contenido y la posición de cada palabra, y un decodificador de máscara mejorado. DeBERTaV3 \citep{he2023} reemplaza el objetivo de enmascaramiento por la detección de tokens reemplazados, al estilo ELECTRA, y usa una compartición de embeddings desacoplada por gradiente. Estos modelos se ofrecen en distintos tamaños, como small, base y large, con un costo computacional creciente.
+
+Los modelos de lenguaje generativos también se han explorado como evaluadores. \citet{mizumoto2023} reportan una correlación entre las puntuaciones de un modelo generativo, usado sin entrenamiento específico, y el nivel de ensayos de TOEFL.
+
+\subsection{Calificación de respuestas cortas}
+
+La calificación automática de respuestas cortas está cerca del problema de los resúmenes, porque la respuesta del estudiante se compara con una referencia. \citet{burrows2015} organizan los trabajos de esta área en eras, que van del mapeo de conceptos y la extracción de información a los métodos basados en corpus, el aprendizaje automático y la evaluación, y reúnen más de ochenta trabajos.
+
+\subsection{Datos tabulares, ensambles y combinación de modelos}
+
+Un hallazgo repetido es que los modelos de árboles potenciados siguen siendo competitivos frente a las redes profundas en datos tabulares, y que combinar ambos da los mejores resultados. \citet{shwartz2022} comparan modelos profundos recientes con XGBoost sobre varios conjuntos de datos y encuentran que XGBoost es superior y requiere menos ajuste, mientras que un ensamble de modelos profundos con XGBoost suele ser la mejor opción. La generalización apilada \citep{wolpert1992} formaliza esta combinación, ya que un metamodelo aprende a ponderar las predicciones de modelos base.
+
+\subsection{Síntesis comparativa}
+
+La tabla \ref{tab:comparacion} resume las familias revisadas, sus fortalezas y sus limitaciones frente al problema de este proyecto.
+
+\begin{table}[ht]
+\centering
+\footnotesize
+\caption{Comparación de familias de algoritmos revisadas.}
+\label{tab:comparacion}
+\begin{tabular}{P{2.7cm}P{3.3cm}P{3.3cm}P{3.3cm}}
+\toprule
+Familia & Referencias & Fortalezas & Limitaciones \\
+\midrule
+Regresión lineal o regularizada sobre rasgos &
+\citet{attali2006}; \citet{hoerl1970} &
+Interpretable, rápida y buena línea base. &
+Capacidad limitada y no captura significado. \\
+\addlinespace
+Árboles y boosting sobre rasgos &
+\citet{breiman2001}; \citet{friedman2001}; \citet{chen2016}; \citet{ke2017}; \citet{shwartz2022} &
+Captura no linealidades e interacciones, necesita poco ajuste. &
+Depende de la calidad de los rasgos y puede reducirse a contar palabras. \\
+\addlinespace
+Similitud semántica con LSA o embeddings &
+\citet{landauer1998}; \citet{kintsch2000}; \citet{reimers2019}; \citet{bojanowski2017} &
+Mide la cobertura de contenido frente a la fuente. &
+Poco sensible a la redacción y requiere el texto fuente. \\
+\addlinespace
+Redes recurrentes y perceptrones &
+\citet{taghipour2016}; \citet{hochreiter1997}; \citet{kumar2020} &
+Aprenden representaciones sin rasgos manuales. &
+Necesitan muchos datos variados y generalizan peor a textos nuevos. \\
+\addlinespace
+Transformers ajustados &
+\citet{devlin2019}; \citet{he2021}; \citet{he2023}; \citet{xue2021}; \citet{ludwig2021} &
+Significado en contexto y varias salidas a la vez. &
+Costo computacional y límite de longitud de entrada. \\
+\addlinespace
+Modelos generativos sin entrenar &
+\citet{mizumoto2023} &
+No requieren datos etiquetados. &
+Costo y poca reproducibilidad. \\
+\addlinespace
+Ensambles y stacking &
+\citet{wolpert1992}; \citet{shwartz2022} &
+Combinan señales complementarias y reducen la varianza. &
+Mayor complejidad y riesgo de fuga si no se valida bien. \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%% 3. SELECCIÓN %%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Selección preliminar de algoritmos}
+
+A partir de la revisión y de los hallazgos del análisis exploratorio, se proponen cuatro modelos ordenados de menor a mayor complejidad. La selección es preliminar y el desempeño de cada uno se confirmará con validación por texto fuente.
+
+\subsection{Modelo 0: regresión Ridge como línea base}
+
+El primer modelo es una regresión lineal con penalización de tipo L2 \citep{hoerl1970} sobre las 21 características derivadas del análisis exploratorio, con transformación logarítmica de las variables de tamaño y con la diversidad léxica ajustada por tamaño. Se considera porque es la referencia mínima que cualquier modelo posterior debe superar, y porque es la forma de modelo que usan los sistemas clásicos como e-rater \citep{attali2006}. Además, sus coeficientes permiten verificar si el modelo se reduce a contar palabras, que es el riesgo identificado en el análisis exploratorio. Su implementación está disponible en scikit-learn \citep{pedregosa2011}.
+
+\subsection{Modelo 1: gradient boosting sobre rasgos}
+
+El segundo modelo es LightGBM \citep{ke2017} o XGBoost \citep{chen2016}, con un modelo por cada nota, sobre las 21 características más rasgos nuevos. Estos rasgos son medidas de legibilidad, conteo de errores de ortografía y gramática, índices de cohesión y sofisticación léxica en la línea de \citet{crossley2016} y \citet{kyle2018}, y la similitud semántica entre el resumen y la fuente calculada con embeddings de oraciones \citep{reimers2019}.
+
+Se considera por cuatro razones. Primero, captura relaciones no lineales que el análisis exploratorio mostró, como que el solapamiento medio ayuda a content pero el solapamiento muy alto penaliza, un patrón que un modelo lineal no representa. Segundo, con solo cuatro textos fuente los modelos de árboles necesitan poco ajuste y son estables \citep{shwartz2022}. Tercero, es rápido, lo que permite probar muchas combinaciones de rasgos con validación por texto fuente. Cuarto, permite medir la importancia de cada rasgo, útil para vigilar la dependencia de la longitud, igual que el uso de valores SHAP en \citet{kumar2020}.
+
+\subsection{Modelo 2: DeBERTa ajustado con salida doble}
+
+El tercer modelo es DeBERTaV3 \citep{he2021,he2023} ajustado con una cabeza de regresión de dos salidas, una para content y otra para wording, y con una pérdida cuadrática acorde con el MCRMSE. La entrada sería la consigna del texto concatenada con el resumen y, opcionalmente, un fragmento del texto fuente.
+
+Se considera porque los modelos Transformer son los de mejor desempeño reportado en tareas de puntuación de escritura \citep{uto2021,xue2021,ludwig2021}, y porque la atención desacoplada de DeBERTa y el preentrenamiento de DeBERTaV3 son una mejora documentada frente a BERT. Además, una sola red con dos salidas aprovecha la correlación de 0,75 entre las notas, de forma parecida al enfoque multitarea de \citet{xue2021}, sin forzar a que sean la misma nota. Finalmente, entiende el significado en contexto, así que aporta la señal de contenido y de redacción que los rasgos superficiales no capturan.
+
+Dentro de este modelo se compararán varias variantes de arquitectura. En cuanto al tamaño, se probarán las versiones small y base y, si los recursos lo permiten, large. En cuanto a la agregación, se comparará el token de clasificación frente al promedio de todos los tokens. En cuanto a la entrada, se probará el resumen solo, la consigna con el resumen, y la consigna con el resumen y la fuente. Esta última opción es la más delicada porque el texto fuente llega a 976 palabras y puede exceder el límite de 512 tokens del modelo, por lo que habría que truncarlo o fragmentarlo, de forma parecida al esquema jerárquico de \citet{xue2021}. Finalmente, se probarán estrategias de regularización como congelar las capas inferiores o usar tasas de aprendizaje menores en ellas, para reducir el sobreajuste a los cuatro textos.
+
+El riesgo principal de este modelo es que, con solo cuatro textos fuente, un modelo grande puede memorizar patrones propios de cada texto en lugar de aprender a evaluar. La validación por texto fuente y el uso de modelos pequeños o con capas congeladas mitigan este riesgo.
+
+\subsection{Modelo 3: combinación de modelos}
+
+El cuarto modelo es un metamodelo sencillo, como una regresión lineal o un boosting poco profundo, que recibe las predicciones de los modelos 1 y 2 siguiendo la idea de generalización apilada \citep{wolpert1992}. Se considera porque los dos modelos aportan información complementaria. Los rasgos capturan longitud, solapamiento y estilo de forma explícita, y el Transformer captura semántica y fluidez. \citet{shwartz2022} reportan que un ensamble de modelos profundos con árboles suele ser la mejor opción. Las predicciones que recibe el metamodelo deben generarse fuera de muestra, separando por texto fuente, para evitar fuga de información.
+
+\subsection{Enfoques considerados y descartados por ahora}
+
+Se descartan por ahora las redes LSTM entrenadas desde cero \citep{taghipour2016}, porque con solo cuatro textos fuente y sin preentrenamiento es poco probable que generalicen a textos nuevos mejor que un Transformer preentrenado. También se descarta usar únicamente LSA o TF-IDF \citep{landauer1998,salton1988} como modelo, porque sirven para medir cobertura de contenido pero no calidad de redacción, aunque se mantienen como rasgos adicionales. Los modelos de lenguaje generativos sin ajuste \citep{mizumoto2023} quedan como referencia comparativa y no como modelo principal, por su costo y su poca reproducibilidad.
+
+\subsection{Protocolo de evaluación común}
+
+Todos los modelos se evaluarán con el MCRMSE, que es la métrica oficial de la competencia. La validación será un GroupKFold por identificador de texto, equivalente a dejar un texto fuente fuera en cada iteración, y se reportará el error por texto para detectar sobreajuste. Para controlar el atajo de la longitud, cada modelo se comparará contra una línea base que solo usa el número de palabras, y se revisará el error en resúmenes muy cortos y muy largos, siguiendo el criterio de generalización entre tareas de \citet{williamson2012}.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%% 4. CONCLUSIÓN %%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Conclusión}
+
+La literatura muestra una progresión desde los modelos lineales sobre rasgos hacia los modelos de árboles, las redes neuronales y los Transformers preentrenados, con evidencia de que combinar modelos de árboles con modelos profundos da buenos resultados. Dado que el problema tiene pocos textos fuente, dos notas correlacionadas y un atajo evidente en la longitud, se seleccionan como candidatos una regresión Ridge como línea base, un gradient boosting sobre rasgos enriquecidos, un DeBERTaV3 ajustado con salida doble y un ensamble de ambos. La decisión final se tomará con validación por texto fuente.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%% REFERENCIAS %%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\begin{thebibliography}{99}
+
+\bibitem[Attali y Burstein(2006)]{attali2006}
+Attali, Y., y Burstein, J. (2006). Automated essay scoring with e-rater V.2. \textit{The Journal of Technology, Learning, and Assessment, 4}(3). \url{https://ejournals.bc.edu/index.php/jtla/article/view/1650}
+
+\bibitem[Bojanowski et~al.(2017)]{bojanowski2017}
+Bojanowski, P., Grave, E., Joulin, A., y Mikolov, T. (2017). Enriching word vectors with subword information. \textit{Transactions of the Association for Computational Linguistics, 5}, 135--146. \url{https://doi.org/10.1162/tacl_a_00051}
+
+\bibitem[Breiman(2001)]{breiman2001}
+Breiman, L. (2001). Random forests. \textit{Machine Learning, 45}(1), 5--32. \url{https://doi.org/10.1023/A:1010933404324}
+
+\bibitem[Burrows et~al.(2015)]{burrows2015}
+Burrows, S., Gurevych, I., y Stein, B. (2015). The eras and trends of automatic short answer grading. \textit{International Journal of Artificial Intelligence in Education, 25}(1), 60--117. \url{https://doi.org/10.1007/s40593-014-0026-8}
+
+\bibitem[Chen y Guestrin(2016)]{chen2016}
+Chen, T., y Guestrin, C. (2016). XGBoost: A scalable tree boosting system. En \textit{Proceedings of the 22nd ACM SIGKDD International Conference on Knowledge Discovery and Data Mining} (pp. 785--794). ACM. \url{https://doi.org/10.1145/2939672.2939785}
+
+\bibitem[Cortes y Vapnik(1995)]{cortes1995}
+Cortes, C., y Vapnik, V. (1995). Support-vector networks. \textit{Machine Learning, 20}(3), 273--297. \url{https://doi.org/10.1007/BF00994018}
+
+\bibitem[Crossley et~al.(2016)]{crossley2016}
+Crossley, S. A., Kyle, K., y McNamara, D. S. (2016). The tool for the automatic analysis of text cohesion (TAACO): Automatic assessment of local, global, and text cohesion. \textit{Behavior Research Methods, 48}(4), 1227--1237. \url{https://doi.org/10.3758/s13428-015-0651-7}
+
+\bibitem[Devlin et~al.(2019)]{devlin2019}
+Devlin, J., Chang, M.-W., Lee, K., y Toutanova, K. (2019). BERT: Pre-training of deep bidirectional transformers for language understanding. En \textit{Proceedings of the 2019 Conference of the North American Chapter of the Association for Computational Linguistics: Human Language Technologies} (pp. 4171--4186). Association for Computational Linguistics. \url{https://doi.org/10.18653/v1/N19-1423}
+
+\bibitem[Franzke et~al.(2005)]{franzke2005}
+Franzke, M., Kintsch, E., Caccamise, D., Johnson, N., y Dooley, S. (2005). Summary Street®: Computer support for comprehension and writing. \textit{Journal of Educational Computing Research, 33}(1), 53--80. \url{https://doi.org/10.2190/DH8F-QJWM-J457-FQVB}
+
+\bibitem[Friedman(2001)]{friedman2001}
+Friedman, J. H. (2001). Greedy function approximation: A gradient boosting machine. \textit{The Annals of Statistics, 29}(5), 1189--1232. \url{https://doi.org/10.1214/aos/1013203451}
+
+\bibitem[He et~al.(2021)]{he2021}
+He, P., Liu, X., Gao, J., y Chen, W. (2021). DeBERTa: Decoding-enhanced BERT with disentangled attention. En \textit{International Conference on Learning Representations}. \url{https://arxiv.org/abs/2006.03654}
+
+\bibitem[He et~al.(2023)]{he2023}
+He, P., Gao, J., y Chen, W. (2023). \textit{DeBERTaV3: Improving DeBERTa using ELECTRA-style pre-training with gradient-disentangled embedding sharing} [Preprint]. arXiv. \url{https://arxiv.org/abs/2111.09543}
+
+\bibitem[Hochreiter y Schmidhuber(1997)]{hochreiter1997}
+Hochreiter, S., y Schmidhuber, J. (1997). Long short-term memory. \textit{Neural Computation, 9}(8), 1735--1780. \url{https://doi.org/10.1162/neco.1997.9.8.1735}
+
+\bibitem[Hoerl y Kennard(1970)]{hoerl1970}
+Hoerl, A. E., y Kennard, R. W. (1970). Ridge regression: Biased estimation for nonorthogonal problems. \textit{Technometrics, 12}(1), 55--67. \url{https://doi.org/10.2307/1267351}
+
+\bibitem[Hussein et~al.(2019)]{hussein2019}
+Hussein, M. A., Hassan, H., y Nassef, M. (2019). Automated language essay scoring systems: A literature review. \textit{PeerJ Computer Science, 5}, e208. \url{https://doi.org/10.7717/peerj-cs.208}
+
+\bibitem[Ke et~al.(2017)]{ke2017}
+Ke, G., Meng, Q., Finley, T., Wang, T., Chen, W., Ma, W., Ye, Q., y Liu, T.-Y. (2017). LightGBM: A highly efficient gradient boosting decision tree. En \textit{Advances in Neural Information Processing Systems 30}. \url{https://papers.nips.cc/paper/6907-lightgbm-a-highly-efficient-gradient-boosting-decision-tree}
+
+\bibitem[Kintsch et~al.(2000)]{kintsch2000}
+Kintsch, E., Steinhart, D., Stahl, G., LSA Research Group, Matthews, C., y Lamb, R. (2000). Developing summarization skills through the use of LSA-based feedback. \textit{Interactive Learning Environments, 8}(2), 87--109. \url{https://doi.org/10.1076/1049-4820(200008)8:2;1-B;FT087}
+
+\bibitem[Kumar y Boulanger(2020)]{kumar2020}
+Kumar, V., y Boulanger, D. (2020). Explainable automated essay scoring: Deep learning really has pedagogical value. \textit{Frontiers in Education, 5}, 572367. \url{https://doi.org/10.3389/feduc.2020.572367}
+
+\bibitem[Kyle et~al.(2018)]{kyle2018}
+Kyle, K., Crossley, S., y Berger, C. (2018). The tool for the automatic analysis of lexical sophistication (TAALES): Version 2.0. \textit{Behavior Research Methods, 50}(3), 1030--1046. \url{https://doi.org/10.3758/s13428-017-0924-4}
+
+\bibitem[Landauer et~al.(1998)]{landauer1998}
+Landauer, T. K., Foltz, P. W., y Laham, D. (1998). An introduction to latent semantic analysis. \textit{Discourse Processes, 25}(2--3), 259--284. \url{https://doi.org/10.1080/01638539809545028}
+
+\bibitem[Ludwig et~al.(2021)]{ludwig2021}
+Ludwig, S., Mayer, C., Hansen, C., Eilers, K., y Brandt, S. (2021). Automated essay scoring using transformer models. \textit{Psych, 3}(4), 897--915. \url{https://doi.org/10.3390/psych3040056}
+
+\bibitem[Mizumoto y Eguchi(2023)]{mizumoto2023}
+Mizumoto, A., y Eguchi, M. (2023). Exploring the potential of using an AI language model for automated essay scoring. \textit{Research Methods in Applied Linguistics, 2}(2), 100050. \url{https://doi.org/10.1016/j.rmal.2023.100050}
+
+\bibitem[Pedregosa et~al.(2011)]{pedregosa2011}
+Pedregosa, F., Varoquaux, G., Gramfort, A., Michel, V., Thirion, B., Grisel, O., Blondel, M., Prettenhofer, P., Weiss, R., Dubourg, V., Vanderplas, J., Passos, A., Cournapeau, D., Brucher, M., Perrot, M., y Duchesnay, E. (2011). Scikit-learn: Machine learning in Python. \textit{Journal of Machine Learning Research, 12}, 2825--2830. \url{https://jmlr.org/papers/v12/pedregosa11a.html}
+
+\bibitem[Ramesh y Sanampudi(2022)]{ramesh2022}
+Ramesh, D., y Sanampudi, S. K. (2022). An automated essay scoring systems: A systematic literature review. \textit{Artificial Intelligence Review, 55}(3), 2495--2527. \url{https://doi.org/10.1007/s10462-021-10068-2}
+
+\bibitem[Reimers y Gurevych(2019)]{reimers2019}
+Reimers, N., y Gurevych, I. (2019). Sentence-BERT: Sentence embeddings using Siamese BERT-networks. En \textit{Proceedings of the 2019 Conference on Empirical Methods in Natural Language Processing and the 9th International Joint Conference on Natural Language Processing} (pp. 3982--3992). Association for Computational Linguistics. \url{https://doi.org/10.18653/v1/D19-1410}
+
+\bibitem[Salton y Buckley(1988)]{salton1988}
+Salton, G., y Buckley, C. (1988). Term-weighting approaches in automatic text retrieval. \textit{Information Processing \& Management, 24}(5), 513--523. \url{https://doi.org/10.1016/0306-4573(88)90021-0}
+
+\bibitem[Shwartz-Ziv y Armon(2022)]{shwartz2022}
+Shwartz-Ziv, R., y Armon, A. (2022). Tabular data: Deep learning is not all you need. \textit{Information Fusion, 81}, 84--90. \url{https://doi.org/10.1016/j.inffus.2021.11.011}
+
+\bibitem[Smola y Sch{\"o}lkopf(2004)]{smola2004}
+Smola, A. J., y Sch{\"o}lkopf, B. (2004). A tutorial on support vector regression. \textit{Statistics and Computing, 14}(3), 199--222. \url{https://doi.org/10.1023/B:STCO.0000035301.49549.88}
+
+\bibitem[Taghipour y Ng(2016)]{taghipour2016}
+Taghipour, K., y Ng, H. T. (2016). A neural approach to automated essay scoring. En \textit{Proceedings of the 2016 Conference on Empirical Methods in Natural Language Processing} (pp. 1882--1891). Association for Computational Linguistics. \url{https://doi.org/10.18653/v1/D16-1193}
+
+\bibitem[Uto(2021)]{uto2021}
+Uto, M. (2021). A review of deep-neural automated essay scoring models. \textit{Behaviormetrika, 48}(2), 459--484. \url{https://doi.org/10.1007/s41237-021-00142-y}
+
+\bibitem[Wade-Stein y Kintsch(2004)]{wade2004}
+Wade-Stein, D., y Kintsch, E. (2004). Summary Street: Interactive computer support for writing. \textit{Cognition and Instruction, 22}(3), 333--362. \url{https://doi.org/10.1207/s1532690xci2203_3}
+
+\bibitem[Williamson et~al.(2012)]{williamson2012}
+Williamson, D. M., Xi, X., y Breyer, F. J. (2012). A framework for evaluation and use of automated scoring. \textit{Educational Measurement: Issues and Practice, 31}(1), 2--13. \url{https://doi.org/10.1111/j.1745-3992.2011.00223.x}
+
+\bibitem[Wolpert(1992)]{wolpert1992}
+Wolpert, D. H. (1992). Stacked generalization. \textit{Neural Networks, 5}(2), 241--259. \url{https://doi.org/10.1016/S0893-6080(05)80023-1}
+
+\bibitem[Xue et~al.(2021)]{xue2021}
+Xue, J., Tang, X., y Zheng, L. (2021). A hierarchical BERT-based transfer learning approach for multi-dimensional essay scoring. \textit{IEEE Access, 9}, 125403--125415. \url{https://doi.org/10.1109/ACCESS.2021.3110683}
+
+\end{thebibliography}
+
+\end{document}
