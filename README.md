@@ -1,44 +1,67 @@
-# Proyecto 2 — Análisis Exploratorio
-### Reto 12: CommonLit — Evaluar resúmenes de estudiantes · Grupo 6
-
-Tema: Procesamiento del Lenguaje Natural.
+# Proyecto 2 — CommonLit: Evaluar resúmenes de estudiantes · Grupo 6
+CC3084 Data Science · UVG · Semestre II 2026 · Reto 12 (Procesamiento del Lenguaje Natural)
 Competencia: https://www.kaggle.com/competitions/commonlit-evaluate-student-summaries/overview
 
-Se predicen dos notas que un experto asigna al resumen de un estudiante:
-**content** (cobertura de las ideas del texto fuente) y **wording** (calidad de
-la redacción). Este repositorio contiene el análisis exploratorio.
+Se predicen dos notas que un experto asigna al resumen de un estudiante: **content** (cobertura de las
+ideas del texto fuente) y **wording** (calidad de la redacción). Métrica: MCRMSE.
+La validación es **Leave-One-Prompt-Out**: cada pliegue deja fuera un texto fuente completo, porque la
+prueba real usa textos que el modelo no vio.
+
+## Estructura
+
+```
+data/            CSV de la competencia (no se versionan; descargar de Kaggle)
+notebooks/
+  eda_commonlit.ipynb   análisis exploratorio (entrega anterior)
+  deberta_gpu.ipynb     ajuste fino de DeBERTa-v3 en GPU (Kaggle/Colab)
+src/
+  eda_utils.py          limpieza y 21 rasgos del EDA
+  features.py           rasgos del modelado (legibilidad, ortografía, TF-IDF/LSA, cobertura)
+  train_cpu.py          Ridge y LightGBM con validación anidada Leave-One-Prompt-Out
+  train_deberta.py      DeBERTa-v3 con salida doble (lo usa el notebook de GPU)
+  evaluate.py           ensamble por stacking, métricas y figuras estáticas
+  inference.py          preprocesamiento + predicción para la app
+  viz.py                paleta y estilo compartidos
+app/app.py              aplicación Streamlit
+results/                predicciones fuera de muestra y métricas
+models/                 modelos finales entrenados con los 4 textos
+figuras/                figuras del EDA y de resultados
+informe/                informe final en LaTeX
+```
 
 ## Cómo ejecutar
 
 ```bash
 pip install -r requirements.txt
-python src/run_eda.py            # genera figuras/ y data/features_train.parquet
+python src/train_cpu.py      # rasgos + Ridge + LightGBM  (~1–2 min en CPU)
+# (opcional) correr notebooks/deberta_gpu.ipynb en GPU y copiar results/deberta_* aquí
+python src/evaluate.py       # ensamble, métricas y figuras
+streamlit run app/app.py     # aplicación
 ```
 
-## Datos en números
+## Resultados (MCRMSE medio, un texto fuente fuera en cada pliegue)
 
-- 7165 resúmenes en entrenamiento, **solo 4 textos fuente**.
-- Sin valores faltantes, sin duplicados, resumen más corto = 22 palabras.
-- El `test.csv` visible es solo un formato de 4 filas; la prueba real usa textos
-  nuevos.
+| Modelo | MCRMSE |
+|---|---|
+| Ensamble (Ridge + LightGBM + DeBERTa base) | 0,518 |
+| LightGBM, 33 rasgos | 0,524 |
+| LightGBM, 18 rasgos | 0,546 |
+| Ridge, 33 rasgos | 0,567 |
+| Ridge, 18 rasgos | 0,592 |
+| DeBERTa-v3 base | 0,608 |
+| DeBERTa-v3 small | 0,617 |
+| Solo longitud (línea base) | 0,724 |
 
-## Hallazgos clave
+Detalle en `results/tabla_modelos.csv` y en el informe. Con 4 pliegues, la ventaja del ensamble sobre
+LightGBM (0,006) no es concluyente. Los pesos de DeBERTa (`deberta_*_final/`, ~0,5 GB) no se versionan:
+colócalos en `results/` (o en `deberta_results/`) para que la app los use.
 
-1. **La longitud del resumen es la señal más fuerte** (cantidad de caracteres:
-   correlación ~0.86 con content, ~0.61 con wording). Riesgo: un modelo ingenuo
-   podría reducirse a contar palabras.
-2. **content y wording están correlacionadas** (Pearson 0.75) pero miden cosas
-   distintas → predecir juntas, no unir.
-3. **Copiar y pegar penaliza**: el solapamiento alto con el texto fuente baja
-   ambas notas, sobre todo wording.
-4. **La diversidad léxica** correlaciona en negativo, pero es un efecto del
-   tamaño → hay que ajustarla.
-5. **Hay sesgo por texto fuente** en wording (The Third Wave +0.52 vs The Jungle
-   −0.30) → no usar el id del texto como variable y validar por grupo.
-6. Los outliers de tamaño (~6%) son casos reales (transcripciones o respuestas
-   mínimas), no errores.
+## Hallazgos que condicionaron el modelado
 
-## Decisión de validación
-
-**GroupKFold por `prompt_id`** (4 grupos) o Leave-One-Prompt-Out, reportando el
-error por texto para vigilar el sobreajuste.
+1. La longitud del resumen es la señal más fuerte (r ≈ 0,86 con content). Toda comparación incluye una
+   línea base que solo usa longitud.
+2. content y wording están correlacionadas (0,75) pero se predicen con salidas separadas.
+3. Copiar y pegar penaliza wording; el solapamiento medio ayuda a content.
+4. **Rasgos que identifican el texto fuente se descartan** (`prompt_word_count` y la razón resumen/fuente):
+   con solo 4 textos, un modelo lineal los usa para "reconocer" el texto y falla al extrapolar
+   (MCRMSE 2,31 en *The Jungle* con ellos, 0,52 sin ellos).
